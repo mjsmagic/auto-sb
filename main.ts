@@ -40,13 +40,13 @@ async function getEmailForUsername(username: string): Promise<string | undefined
             .on('error', (error) => reject(error))
             .on('end', () => resolve());
     });
-    const user = users.find((u) => u.username === username);
+    const user = users.find((u) => u["Public name"] === username);
 
     if (!user) {
         return undefined;
     }
 
-    return user.email;
+    return user["Email address"];
 }
 
 function getPRTimes(created_on: string | number | Date) {
@@ -70,8 +70,7 @@ const getSlackUsers = async (reviewer_names) => {
             reviewer_email.push(email);
         }
     }
-    const SLACK_TOKEN =
-        process.env.SLACK_TOKEN;
+    const SLACK_TOKEN = process.env.SLACK_TOKEN;
     const web = new WebClient(SLACK_TOKEN);
     try {
         // Call the users.list method of the WebClient instance to fetch all users
@@ -104,7 +103,7 @@ const fetchComments = async (apiUrl: string, accessToken: string, reviewerUserna
             (comment) => new Date(comment.created_on).getTime() <= OneDay
         );
         const filteredComments = recentComments.filter(
-            (comment) => !reviewerUsernames.includes(comment.user.username)
+            (comment) => !reviewerUsernames.includes(comment.user.display_name)
         );
         return filteredComments;
     } catch (error) {
@@ -202,8 +201,8 @@ getRepos().then(async (repolist) => {
                     msg += '<@' + memberId + '> '
                 });
                 console.log("after:  " + reviewer_names.length + '\n');
+                slack_api_call(msg);
             }
-            slack_api_call(msg);
         }
         else {
             console.log("No PRs found");
