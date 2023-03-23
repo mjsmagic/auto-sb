@@ -90,22 +90,27 @@ const getSlackUsers = async (reviewer_names) => {
     }
 };
 
-const fetchComments = async (apiUrl: string, accessToken: string, reviewerUsernames: any) => {
+const fetchComments = async (apiUrl: string, accessToken: string) => {
     try {
-        var OneDay = new Date().getTime() + (1 * 24 * 60 * 60 * 1000);
         const response = await axios.get(apiUrl, {
             headers: {
                 Authorization: `Bearer ${accessToken}`,
             },
         });
-        const comments = response.data.values;
-        const recentComments = comments.filter(
-            (comment) => new Date(comment.created_on).getTime() <= OneDay
-        );
-        const filteredComments = recentComments.filter(
-            (comment) => !reviewerUsernames.includes(comment.user.display_name)
-        );
-        return filteredComments;
+        return response.data.values;
+    } catch (error) {
+        console.error(error);
+    }
+};
+
+const fetchTask = async (apiUrl: string, accessToken: string) => {
+    try {
+        const response = await axios.get(apiUrl, {
+            headers: {
+                Authorization: `Bearer ${accessToken}`,
+            },
+        });
+        return response.data.values;
     } catch (error) {
         console.error(error);
     }
@@ -176,27 +181,39 @@ getRepos().then(async (repolist) => {
                 }
                 reviewer_names = Array.from(new Set(pr_reviewer_list));
 
-                const comments = await fetchComments('https://api.bitbucket.org/2.0/repositories/' + BB_WORKSPACE + '/' + repo + '/pullrequests/' + (reponsePRStatus.data['values'][i]['id']) + '/comments', process.env.BB_ACCESS_TOKEN, reviewer_names);
+                const comments = await fetchComments('https://api.bitbucket.org/2.0/repositories/' + BB_WORKSPACE + '/' + repo + '/pullrequests/' + (reponsePRStatus.data['values'][i]['id']) + '/comments', process.env.BB_ACCESS_TOKEN);
+
+                for (var l = 0; l < comments.length; l++) {
+                    var OneDay = new Date().getTime() + (1 * 24 * 60 * 60 * 1000);
+                    if (new Date(comments[l].updated_on).getTime() <= OneDay) {
+                        reviewer_names.filter((name) => {
+                            name != comments[l].user.display_name;
+                        })
+                    }
+                }
+                const tasks = await fetchTask('https://api.bitbucket.org/2.0/repositories/' + BB_WORKSPACE + '/' + repo + '/pullrequests/' + (reponsePRStatus.data['values'][i]['id']) + '/tasks', process.env.BB_ACCESS_TOKEN,);
+                for (var l = 0; l < tasks.length; l++) {
+                    var OneDay = new Date().getTime() + (1 * 24 * 60 * 60 * 1000);
+                    if (new Date(tasks[l].updated_on).getTime() <= OneDay) {
+                        reviewer_names.filter((name) => {
+                            name != tasks[l].creator.display_name;
+                        })
+                    }
+                }
+
+                if (reviewer_names.length == 0) {
+                    continue;
+                }
                 const slackReviewer = await getSlackUsers(reviewer_names);
-                var commenti = 1
-                msg = 'Comments:::::' + '\n';
-                comments.forEach((comment) => {
-                    msg += `${commenti}` + '\n';
-                    msg += `${comment.content.raw}` + '\n';
-                    msg += `Comment By : ${comment.user.display_name}` + '\n';
-                    msg += `PR Title : ${comment.pullrequest.title}` + '\n';
-                    msg += '\n';
-                    msg += '\n';
-                    commenti = commenti + 1;
-                })
-
                 let pr_data_values = reponsePRStatus.data.values[i];
-                //msg = '<!here>  yo DEVs ' + '\n';
-                msg += 'PR # ' + (pr_data_values.id) + ' waiting on Repo: ' + repo + '\n';
-                msg += (pr_data_values.title) + ':: ' + (pr_data_values.links.html.href) + '\n';
-                msg += ':fire: It was opened ' + pr_cd_day_list[i] + ' day(s) ago.\n';
 
-                msg += 'Reviewers:::::' + '\n';
+                msg = `*PR # ${pr_data_values.id} Waiting on Repository name: ${repo}*` + '\n';
+                msg += 'It was opened ' + pr_cd_day_list[i] + ' day(s) ago. :fire: \n';
+                msg += '\n';
+                msg += `*Title* : ${(pr_data_values.title)}` + '\n';
+                msg += `*Link* : ${pr_data_values.links.html.href}` + '\n';
+                msg += '\n';
+                msg += '*Reviewers*' + '\n';
                 slackReviewer.forEach(function (memberId) {
                     msg += '<@' + memberId + '> '
                 });
