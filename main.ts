@@ -182,25 +182,26 @@ getRepos().then(async (repolist) => {
                 reviewer_names = Array.from(new Set(pr_reviewer_list));
 
                 const comments = await fetchComments('https://api.bitbucket.org/2.0/repositories/' + BB_WORKSPACE + '/' + repo + '/pullrequests/' + (reponsePRStatus.data['values'][i]['id']) + '/comments', process.env.BB_ACCESS_TOKEN);
-
                 for (var l = 0; l < comments.length; l++) {
                     var OneDay = new Date().getTime() + (1 * 24 * 60 * 60 * 1000);
                     if (new Date(comments[l].updated_on).getTime() <= OneDay) {
-                        reviewer_names.filter((name) => {
-                            name != comments[l].user.display_name;
-                        })
+                        const index = reviewer_names.indexOf(comments[l].user.display_name);
+                        if (index > -1) {
+                            reviewer_names.splice(index, 1);// only splice array when item is found
+                        }
                     }
                 }
                 const tasks = await fetchTask('https://api.bitbucket.org/2.0/repositories/' + BB_WORKSPACE + '/' + repo + '/pullrequests/' + (reponsePRStatus.data['values'][i]['id']) + '/tasks', process.env.BB_ACCESS_TOKEN,);
                 for (var l = 0; l < tasks.length; l++) {
                     var OneDay = new Date().getTime() + (1 * 24 * 60 * 60 * 1000);
                     if (new Date(tasks[l].updated_on).getTime() <= OneDay) {
-                        reviewer_names.filter((name) => {
-                            name != tasks[l].creator.display_name;
-                        })
+                        const index = reviewer_names.indexOf(tasks[l].creator.display_name);
+                        if (index > -1) {
+                            reviewer_names.splice(index, 1);// only splice array when item is found
+                        }
                     }
                 }
-
+                console.log(reviewer_names);
                 if (reviewer_names.length == 0) {
                     continue;
                 }
