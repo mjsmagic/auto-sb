@@ -115,6 +115,34 @@ const fetchTask = async (apiUrl: string, accessToken: string) => {
   }
 };
 
+const fetchApprovals = async (repo, id) => {
+  let pr_reviewer_url =
+    "https://api.bitbucket.org/2.0/repositories/" +
+    BB_WORKSPACE +
+    "/" +
+    repo +
+    "/pullrequests/" +
+    id;
+  let options = {
+    method: "GET",
+    url: pr_reviewer_url,
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${process.env.BB_ACCESS_TOKEN}`,
+    },
+  };
+
+  try {
+    const response = await axios.request(options);
+    const approvals = response.data.participants.filter(
+      (participant) => participant.approved
+    );
+    return approvals.map((approval) => approval.user.display_name);
+  } catch (error) {
+    console.log(`Error fetching approvals Error: ${error}`);
+  }
+};
+
 async function getRepos() {
   try {
     const responserepos = await axios.get(
@@ -205,12 +233,12 @@ getRepos().then(async (repolist) => {
             "/comments",
           process.env.BB_ACCESS_TOKEN
         );
+
         for (var l = 0; l < comments.length; l++) {
-          var OneDay = new Date().getTime() + 1 * 24 * 60 * 60 * 1000;
-          if (
-            new Date(comments[l].updated_on).getTime() <= OneDay &&
-            !comments[l].deleted
-          ) {
+          var OneDay =
+            new Date(comments[l].updated_on).getTime() +
+            1 * 24 * 60 * 60 * 1000;
+          if (new Date().getTime() >= OneDay) {
             reviewers = reviewers.filter((data) => {
               return data.display_name != comments[l].user.display_name;
             });
@@ -229,12 +257,24 @@ getRepos().then(async (repolist) => {
         );
 
         for (var l = 0; l < tasks.length; l++) {
-          var OneDay = new Date().getTime() + 1 * 24 * 60 * 60 * 1000;
-          if (new Date(tasks[l].updated_on).getTime() <= OneDay) {
+          var OneDay =
+            new Date(tasks[l].updated_on).getTime() + 1 * 24 * 60 * 60 * 1000;
+          if (new Date().getTime() >= OneDay) {
             reviewers = reviewers.filter((data) => {
+              console.log(tasks[l].creator);
               return data.display_name != tasks[l].creator.display_name;
             });
           }
+        }
+
+        const approvals = await fetchApprovals(
+          repo,
+          reponsePRStatus.data["values"][i]["id"]
+        );
+        for (var l = 0; l < approvals.length; l++) {
+            reviewers = reviewers.filter((data) => {
+              return data.display_name != approvals[l];
+            });
         }
 
         let pr_data_values = reponsePRStatus.data.values[i];
