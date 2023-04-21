@@ -238,7 +238,7 @@ getRepos().then(async (repolist) => {
           var OneDay =
             new Date(comments[l].updated_on).getTime() +
             1 * 24 * 60 * 60 * 1000;
-          if (new Date().getTime() >= OneDay) {
+          if (new Date().getTime() <= OneDay) {
             reviewers = reviewers.filter((data) => {
               return data.display_name != comments[l].user.display_name;
             });
@@ -259,7 +259,7 @@ getRepos().then(async (repolist) => {
         for (var l = 0; l < tasks.length; l++) {
           var OneDay =
             new Date(tasks[l].updated_on).getTime() + 1 * 24 * 60 * 60 * 1000;
-          if (new Date().getTime() >= OneDay) {
+          if (new Date().getTime() <= OneDay) {
             reviewers = reviewers.filter((data) => {
               console.log(tasks[l].creator);
               return data.display_name != tasks[l].creator.display_name;
