@@ -1,9 +1,7 @@
 import axios from "axios";
 import "dotenv/config";
 import { WebClient } from "@slack/web-api";
-import csv from "csv-parser";
-import fs from "fs";
-
+​
 let msg: any;
 let pr_url_list: string[] = [];
 let pr_cd_day_list: string[] = [];
@@ -12,7 +10,7 @@ let BB_WORKSPACE: string = "automation-mj";
 let SLACK_WEBHOOK_URL = process.env.SLACK_WEBHOOK_URL;
 const SLACK_TOKEN = process.env.SLACK_TOKEN;
 const web = new WebClient(SLACK_TOKEN);
-
+​
 async function slack_api_call(msg: any, memberId: string) {
   try {
     const data = await web.chat.postMessage({
@@ -29,7 +27,7 @@ async function slack_api_call(msg: any, memberId: string) {
     console.log(`Unable to send slack message error ${error}`);
   }
 }
-
+​
 async function getEmailForUsername(
   accountId: string
 ): Promise<string | undefined> {
@@ -42,7 +40,7 @@ async function getEmailForUsername(
       Authorization: `Basic ${process.env.BB_COMPANY_ACCESS_TOKEN}`,
     },
   };
-
+​
   try {
     const response = await axios.request(config);
     return response.data.emailAddress;
@@ -50,18 +48,32 @@ async function getEmailForUsername(
     console.log(`Error getting Email for AccountID Error: ${error.message}`);
   }
 }
-
+​
 function getPRTimes(created_on: string | number | Date) {
   const currentDate: any = new Date();
   let newDate: any = new Date(created_on);
-
+​
   let diffTime = currentDate - newDate;
   let diffDate = diffTime / (1000 * 3600 * 24);
   let diffDateRound = Math.round(diffDate);
   //console.log(diffDateRound);
   return diffDateRound;
 }
-
+​
+const fetchPR = async (repo, id, accessToken) => {
+  try {
+    const response = await axios.get("https://api.bitbucket.org/2.0/repositories/" + BB_WORKSPACE + "/" + repo + "/pullrequests/" + id + "/comments",{
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    })
+    return response.data.values;
+  } catch (error) {
+    console.log(`error fetching data for PR`)
+    console.error(error);
+  }
+}
+​
 const getSlackUsers = async (reviewer) => {
   const reviewer_email = [];
   for (var i in reviewer) {
@@ -71,9 +83,23 @@ const getSlackUsers = async (reviewer) => {
     }
   }
   try {
-    const result = await web.users.list();
+​
+    const result= [];
+    let cursor = 'start';
+    while ( cursor) {
+      const response = await web.users.list({
+        limit: 100,
+        cursor: cursor === 'start' ? '' : cursor
+      });
+      result.push([...response.members]);
+      cursor = response.response_metadata.next_cursor;
+      setTimeout(() => {
+        console.log('Waiting to find more users on slack');
+      }, 1000);
+    }
+    
     const data = [];
-    result.members.map((member) => {
+    result.map((member) => {
       if (
         member.profile.email &&
         member.name &&
@@ -88,7 +114,7 @@ const getSlackUsers = async (reviewer) => {
     return [];
   }
 };
-
+​
 const fetchComments = async (apiUrl: string, accessToken: string) => {
   try {
     const response = await axios.get(apiUrl, {
@@ -101,7 +127,7 @@ const fetchComments = async (apiUrl: string, accessToken: string) => {
     console.error(error);
   }
 };
-
+​
 const fetchTask = async (apiUrl: string, accessToken: string) => {
   try {
     const response = await axios.get(apiUrl, {
@@ -114,7 +140,7 @@ const fetchTask = async (apiUrl: string, accessToken: string) => {
     console.error(error);
   }
 };
-
+​
 const fetchApprovals = async (repo, id) => {
   let pr_reviewer_url =
     "https://api.bitbucket.org/2.0/repositories/" +
@@ -131,7 +157,7 @@ const fetchApprovals = async (repo, id) => {
       Authorization: `Bearer ${process.env.BB_ACCESS_TOKEN}`,
     },
   };
-
+​
   try {
     const response = await axios.request(options);
     const approvals = response.data.participants.filter(
@@ -142,13 +168,13 @@ const fetchApprovals = async (repo, id) => {
     console.log(`Error fetching approvals Error: ${error}`);
   }
 };
-
+​
 async function getRepos() {
   try {
     const responserepos = await axios.get(
       "https://api.bitbucket.org/2.0/repositories/" +
-        BB_WORKSPACE +
-        "?limit=100",
+      BB_WORKSPACE +
+      "?limit=100",
       {
         method: "GET",
         headers: {
@@ -168,16 +194,16 @@ async function getRepos() {
     return [];
   }
 }
-
+​
 getRepos().then(async (repolist) => {
   for (const repo of repolist) {
     const reponsePRStatus = await axios.get(
       "https://api.bitbucket.org/2.0/repositories/" +
-        BB_WORKSPACE +
-        "/" +
-        repo +
-        "/pullrequests" +
-        "?state=OPEN",
+      BB_WORKSPACE +
+      "/" +
+      repo +
+      "/pullrequests" +
+      "?state=OPEN",
       {
         method: "GET",
         headers: {
@@ -186,18 +212,18 @@ getRepos().then(async (repolist) => {
         },
       }
     );
-
+​
     let size: any = reponsePRStatus.data.values.length;
     if (size > 0) {
       let i: any;
       for (i in reponsePRStatus.data.values) {
         pr_url_list.push(
           "https://api.bitbucket.org/2.0/repositories/" +
-            BB_WORKSPACE +
-            "/" +
-            repo +
-            "/pullrequests/" +
-            reponsePRStatus.data["values"][i]["id"]
+          BB_WORKSPACE +
+          "/" +
+          repo +
+          "/pullrequests/" +
+          reponsePRStatus.data["values"][i]["id"]
         );
         created_on = reponsePRStatus.data.values[i].created_on;
         let dateDiff: any = getPRTimes(created_on);
@@ -218,65 +244,68 @@ getRepos().then(async (repolist) => {
             Authorization: `Bearer ${process.env.BB_ACCESS_TOKEN}`,
           },
         };
+​
+        const prData = await fetchPR(repo, reponsePRStatus.data["values"][i]["id"], process.env.BB_ACCESS_TOKEN);
+        console.log(prData);
+​
         const responseReviewers = await axios.request(options);
-
+​
         let reviewers = [...responseReviewers.data.reviewers];
-        console.log(reviewers);
-
+​
         const comments = await fetchComments(
           "https://api.bitbucket.org/2.0/repositories/" +
-            BB_WORKSPACE +
-            "/" +
-            repo +
-            "/pullrequests/" +
-            reponsePRStatus.data["values"][i]["id"] +
-            "/comments",
+          BB_WORKSPACE +
+          "/" +
+          repo +
+          "/pullrequests/" +
+          reponsePRStatus.data["values"][i]["id"] +
+          "/comments",
           process.env.BB_ACCESS_TOKEN
         );
-
+​
         for (var l = 0; l < comments.length; l++) {
           var OneDay =
             new Date(comments[l].updated_on).getTime() +
             1 * 24 * 60 * 60 * 1000;
-          if (new Date().getTime() >= OneDay) {
+          if (new Date().getTime() <= OneDay) {
             reviewers = reviewers.filter((data) => {
               return data.display_name != comments[l].user.display_name;
             });
           }
         }
-
+​
         const tasks = await fetchTask(
           "https://api.bitbucket.org/2.0/repositories/" +
-            BB_WORKSPACE +
-            "/" +
-            repo +
-            "/pullrequests/" +
-            reponsePRStatus.data["values"][i]["id"] +
-            "/tasks",
+          BB_WORKSPACE +
+          "/" +
+          repo +
+          "/pullrequests/" +
+          reponsePRStatus.data["values"][i]["id"] +
+          "/tasks",
           process.env.BB_ACCESS_TOKEN
         );
-
+​
         for (var l = 0; l < tasks.length; l++) {
           var OneDay =
             new Date(tasks[l].updated_on).getTime() + 1 * 24 * 60 * 60 * 1000;
-          if (new Date().getTime() >= OneDay) {
+          if (new Date().getTime() <= OneDay) {
             reviewers = reviewers.filter((data) => {
               console.log(tasks[l].creator);
               return data.display_name != tasks[l].creator.display_name;
             });
           }
         }
-
+​
         const approvals = await fetchApprovals(
           repo,
           reponsePRStatus.data["values"][i]["id"]
         );
         for (var l = 0; l < approvals.length; l++) {
-            reviewers = reviewers.filter((data) => {
-              return data.display_name != approvals[l];
-            });
+          reviewers = reviewers.filter((data) => {
+            return data.display_name != approvals[l];
+          });
         }
-
+​
         let pr_data_values = reponsePRStatus.data.values[i];
         if (reviewers.length == 0) {
           console.log(
@@ -297,6 +326,10 @@ getRepos().then(async (repolist) => {
         msg += "\n";
         slackReviewer.forEach(function (memberId) {
           slack_api_call(msg, memberId);
+          // this is added because of slack want us to not exceed rate limitation of 1 second
+          setTimeout(() => {
+            console.log('Waiting to send next message');
+          }, 1000);
         });
       }
     } else {
